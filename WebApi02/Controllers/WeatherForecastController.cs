@@ -24,6 +24,9 @@ namespace WebApi02.Controllers
             _logger = logger;
         }
 
+        /// <summary>
+        /// 返回天气信息
+        /// </summary>
         [HttpGet]
         public IEnumerable<WeatherForecast> Get()
         {

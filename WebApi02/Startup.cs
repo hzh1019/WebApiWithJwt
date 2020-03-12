@@ -26,6 +26,7 @@ namespace WebApi02
                 app.UseDeveloperExceptionPage();
             }
 
+            //Nswag二：启用中间件为生成的 Swagger 规范和 Swagger UI 提供服务：
             app.UseOpenApi();
             app.UseSwaggerUi3();
 
@@ -69,7 +70,29 @@ namespace WebApi02
             });
             services.AddScoped<IAuthenticateService, TokenAuthenticationService>();
             services.AddScoped<IUserService, UserService>();
-            services.AddSwaggerDocument();
+
+            //Nswag一：注册swagger服务
+            services.AddSwaggerDocument(config =>
+            {
+                config.PostProcess = document =>
+                {
+                    document.Info.Version = "v1.0.1";
+                    document.Info.Title = "天气Api";
+                    document.Info.Description = "这是一个.Net Core Web Api";
+                    document.Info.TermsOfService = "http://www.google.com";
+                    document.Info.Contact = new NSwag.OpenApiContact
+                    {
+                        Name = "张三",
+                        Email = "a@b.com",
+                        Url = "http://www.abc.com"
+                    };
+                    document.Info.License = new NSwag.OpenApiLicense
+                    {
+                        Name = "许可证名称",
+                        Url = "http://www.d.com"
+                    };
+                };
+            });
         }
     }
 }

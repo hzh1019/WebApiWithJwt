@@ -14,6 +14,17 @@ namespace WebApi02.Controllers
             this._authService = authService;
         }
 
+        /// <summary>
+        /// 获取授权Token
+        /// </summary>
+        /// <param name="request">LoginDto对象</param>
+        /// <remarks>
+        /// {
+        ///     "username": "admin",
+        ///     "password": "123456"
+        /// }
+        /// </remarks>
+        /// <returns></returns>
         [AllowAnonymous]
         [HttpPost, Route("requestToken")]
         public ActionResult RequestToken([FromBody] LoginRequestDTO request)
