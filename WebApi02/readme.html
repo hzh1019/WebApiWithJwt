@@ -1,0 +1,269 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>WebApi添加Jwt认证</title>
+</head>
+<body>
+
+    <h1 id="webapijwt">WebApi添加Jwt认证</h1>
+    <blockquote>
+        <p>
+            环境：asp .net core 3.1<br />
+            Nuget包:Microsoft.AspNetCore.Authentication.JwtBearer
+        </p>
+    </blockquote>
+    <ol>
+        <li><strong>创建一个简单的POCO类，用来存储签发或者验证jwt时用到的信息。（<mark>TokenManagement.cs</mark>）</strong></li>
+    </ol>
+<pre><code>using Newtonsoft.Json;
+
+namespace WebApi02
+{
+    public class TokenManagement
+    {
+        [JsonProperty(&quot;secret&quot;)]
+        public string Secret { get; set; }
+
+        [JsonProperty(&quot;issuer&quot;)]
+        public string Issuer { get; set; }
+
+        [JsonProperty(&quot;audience&quot;)]
+        public string Audience { get; set; }
+
+        [JsonProperty(&quot;accessExpiration&quot;)]
+        public int AccessExpiration { get; set; }
+
+        [JsonProperty(&quot;refreshExpiration&quot;)]
+        public int RefreshExpiration { get; set; }
+    }
+}
+</code></pre>
+    <ol start="2">
+        <li><strong>在 appsettings.Development.json 增加jwt使用到的配置信息（如果是生成环境在appsettings.json添加即可）</strong></li>
+    </ol>
+<pre><code>  &quot;tokenManagement&quot;: {
+    &quot;secret&quot;: &quot;123456123456123456&quot;,
+    &quot;issuer&quot;: &quot;user&quot;,
+    &quot;audience&quot;: &quot;test&quot;,
+    &quot;accessExpiration&quot;: 30,
+    &quot;refreshExpiration&quot;: 60
+  },
+</code></pre>
+    <p>
+        <mark>secret需大于等于16位</mark>
+        3. <strong>startup类的<mark>ConfigureServices</mark>方法中增加读取配置信息</strong>
+    </p>
+<pre><code>services.Configure&lt;TokenManagement&gt;(Configuration.GetSection(&quot;tokenManagement&quot;));
+
+var token = Configuration.GetSection(&quot;tokenManagement&quot;).Get&lt;TokenManagement&gt;();
+</code></pre>
+    <ol start="4">
+        <li><strong>webapi中注入jwt的验证服务，并在中间件管道中启用authentication中间件。</strong></li>
+    </ol>
+<pre><code>//ConfigureServices方法
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+services.AddAuthentication(x =&gt; {
+                x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            }).AddJwtBearer(x=&gt; {
+                x.RequireHttpsMetadata = false;
+                x.SaveToken = true;
+                x.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(token.Secret)),
+                    ValidIssuer = token.Issuer,
+                    ValidAudience = token.Audience,
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                };
+            });
+</code></pre>
+<pre><code>//Configure方法
+app.UseAuthentication();
+</code></pre>
+    <ol start="5">
+        <li><strong>新增请求DTO类（<mark>LoginRequestDTO.cs</mark>）</strong></li>
+    </ol>
+<pre><code>using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations;
+
+namespace WebApi02
+{
+    public class LoginRequestDTO
+    {
+        [Required]
+        [JsonProperty(&quot;username&quot;)]
+        public string Username { get; set; }
+
+        [Required]
+        [JsonProperty(&quot;password&quot;)]
+        public string Password { get; set; }
+    }
+}
+</code></pre>
+    <ol start="6">
+        <li><strong>新增<mark>AuthenticationController.cs</mark>控制器进行token签发（后续需修改）</strong></li>
+    </ol>
+<pre><code>[Route(&quot;api/[controller]&quot;)]
+    [ApiController]
+    public class AuthenticationController : ControllerBase
+    {
+        [AllowAnonymous]
+         [HttpPost, Route(&quot;requestToken&quot;)]
+        public ActionResult RequestToken([FromBody] LoginRequestDTO request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(&quot;Invalid Request&quot;);
+            }
+
+            return Ok();
+
+        }
+    }
+</code></pre>
+    <ol start="7">
+        <li><strong>创建签发token服务接口<mark>IAuthenticateService.cs</mark>和实现接口<mark>TokenAuthenticationService.cs</mark>（后续需修改）</strong></li>
+    </ol>
+<pre><code>namespace WebApi02
+{
+    public interface IAuthenticateService
+    {
+        bool IsAuthenticated(LoginRequestDTO request, out string token);
+    }
+}
+</code></pre>
+<pre><code>
+public class TokenAuthenticationService : IAuthenticateService
+    {
+        public bool IsAuthenticated(LoginRequestDTO request, out string token)
+        {
+            throw new NotImplementedException();
+        }
+    }
+</code></pre>
+    <p>8.<strong><mark>startup.cs</mark>内注册服务</strong></p>
+<pre><code>services.AddScoped&lt;IAuthenticateService, TokenAuthenticationService&gt;();
+</code></pre>
+    <ol start="9">
+        <li><strong>第六步的<mark>AuthenticationController.cs</mark>内注入签发服务及完善逻辑</strong></li>
+    </ol>
+<pre><code>using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace WebApi02.Controllers
+{
+    [ApiController]
+    [Route(&quot;api/[controller]&quot;)]
+    public class AuthenticationController : Controller
+    {
+        private readonly IAuthenticateService _authService;
+
+        public AuthenticationController(IAuthenticateService authService)
+        {
+            this._authService = authService;
+        }
+
+        [AllowAnonymous]
+        [HttpPost, Route(&quot;requestToken&quot;)]
+        public ActionResult RequestToken([FromBody] LoginRequestDTO request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(&quot;无效请求&quot;);
+            }
+            string token;
+            if (_authService.IsAuthenticated(request, out token))
+            {
+                return Ok(token);
+            }
+            return BadRequest(&quot;无效请求&quot;);
+        }
+    }
+}
+</code></pre>
+    <ol start="10">
+        <li><strong>增加token用户管理服务，正常情况需通过用户名密码认证，此例假设所有用户请求都合法，新建用户管理服务接口<mark>IUserService.cs</mark>和实现<mark>UserService.cs</mark>，独立管理是遵循职责单一原则</strong></li>
+    </ol>
+<pre><code>namespace WebApi02
+{
+    public interface IUserService
+    {
+        bool IsValid(LoginRequestDTO req);
+    }
+}
+</code></pre>
+<pre><code>namespace WebApi02
+{
+    public class UserService : IUserService
+    {
+        public bool IsValid(LoginRequestDTO req)
+        {
+            return true;
+        }
+    }
+}
+</code></pre>
+    <ol start="11">
+        <li>注册到容器</li>
+    </ol>
+<pre><code>services.AddScoped&lt;IUserService, UserService&gt;();
+</code></pre>
+    <ol start="12">
+        <li><strong>完善<mark>TokenAuthenticationService.cs</mark>签发token的逻辑，首先要注入IUserService 和 TokenManagement，然后实现具体的业务逻辑</strong></li>
+    </ol>
+<pre><code>using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+
+namespace WebApi02
+{
+    public class TokenAuthenticationService : IAuthenticateService
+    {
+        private readonly IUserService _userService;
+        private readonly TokenManagement _tokenManager;
+
+        public TokenAuthenticationService(IUserService userService, IOptions&lt;TokenManagement&gt; tokenManager)
+        {
+            this._userService = userService;
+            this._tokenManager = tokenManager.Value;
+        }
+
+        public bool IsAuthenticated(LoginRequestDTO request, out string token)
+        {
+            token = string.Empty;
+            if (!_userService.IsValid(request))
+            {
+                return false;
+            }
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.Name,request.Username)
+            };
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_tokenManager.Secret));
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var jwtToken = new JwtSecurityToken(_tokenManager.Issuer, _tokenManager.Audience, claims, expires: DateTime.Now.AddMinutes(_tokenManager.AccessExpiration), signingCredentials: credentials);
+
+            token = new JwtSecurityTokenHandler().WriteToken(jwtToken);
+            return true;
+        }
+    }
+}
+</code></pre>
+    <ol start="13">
+        <li><strong>在测试的api打上Authorize特性表明需要授权</strong></li>
+    </ol>
+<pre><code>[ApiController]
+    [Route(&quot;[controller]&quot;)]
+    [Authorize]
+    public class WeatherForecastController : ControllerBase
+    {
+…………
+</code></pre>
+</body>
+</html>
